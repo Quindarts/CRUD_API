@@ -42,6 +42,7 @@ mongoose.connection.on("connected", function () {
 
 //Authentication
 const CryptoJS = require("crypto-js");
+const jwt = require('jsonwebtoken');
 
 
 //[RESGITER]
@@ -58,11 +59,13 @@ app.post('/auth/register', async (req, res) => {
             const hashPassword = encryptedPassword(password);
             const newUser = { username, password: hashPassword };
             const crUser = await createUser(newUser);
+            const accessToken = jwtSign(crUser._id);
+
 
             crUser === null ?
                 res.status(404).send({ msg: 'Not found create account, try again !!' })
                 :
-                res.status(200).send({ msg: 'Register success', crUser });
+                res.status(200).send({ msg: 'Register success', crUser, accessToken });
         }
     } catch {
         res.status(404).send(res.json({ msg: 'Not found create account, try again !!' }))
@@ -74,14 +77,13 @@ app.post('/auth/login', async (req, res) => {
 
     const { username, password } = req.body;
     const user = await getUser(username);
-
     if (!user)
         res.status(404).send({ msg: 'This account does not exist' });
     else {
         const decPassword = decryptedPassword(user.password);
-
+        const accessToken = jwtSign(user._id);
         (password === decPassword) ?
-            res.status(200).send({ msg: 'Login success!', user })
+            res.status(200).send({ msg: 'Login success!', user, accessToken })
             :
             res.status(404).send({ msg: 'Wrong password' });
 
@@ -111,19 +113,36 @@ async function createUser(newUser) {
     }
 }
 
-//
+//AES
+function encryptedPassword(password) {
+    return CryptoJS.AES.encrypt(password, process.env.PASSWORD_SECRET_KEY).toString();
+};
+
+function decryptedPassword(decryptPassword) {
+    return CryptoJS.AES.decrypt(decryptPassword, process.env.PASSWORD_SECRET_KEY).toString(CryptoJS.enc.Utf8);
+};
+
+//JWT
+
+function jwtSign(id) {
+    return jwt.sign(
+        {
+            id: id
+        },
+        process.env.TOKEN_SECRET_KEY,
+        {
+            expiresIn: "24h",
+        })
+}
+
 //GET
 app.get("/get-all-user", async (req, res) => {
     let result = await monomodel.find({});
-    console.log("🚀 ~ file: server1.js:108 ~ app.get ~ result:", result)
-    console.log(res);
     res.json(result);
-    console.log("🚀 ~ file: server1.js:111 ~ app.get ~ result:", result)
 });
 
 //POST
 app.post("/post", async (req, res) => {
-    console.log("inside post function");
     const data = new monomodel({
         name: req.body.name,
         email: req.body.email,
@@ -142,22 +161,18 @@ app.put("/update/:id", async (req, res) => {
         { id: upid },
         { $set: { name: upname, email: upemail } },
         { new: true, upsert: true, rawResult: true },
-        console.log("🚀 ~ file: server1.js:137 ~ app.put ~ Result:", Result)
     );
-    console.log("🚀 ~ file: server1.js:138 ~ app.put ~ result:", result)
     res.json(result);
-    console.log("🚀 ~ file: server1.js:141 ~ app.put ~ result:", result)
 });
 
 //DELETE
 app.delete("/delete/:id", async (req, res) => {
     let idDel = req.params.id;
     let resultDel = await monomodel.findOneAndDelete({ id: idDel });
-    console.log("🚀 ~ file: server1.js:148 ~ app.delete ~ result:", result)
     res.json(resultDel);
-    console.log("🚀 ~ file: server1.js:150 ~ app.delete ~ result:", result)
 });
 
+//LISTEN PORT
 app.listen(process.env.PORT, () => {
     console.log("app listen port: 5000");
 });
@@ -171,11 +186,3 @@ function randPassword(length) {
     };
     return result;
 };
-
-function encryptedPassword(password) {
-    return CryptoJS.AES.encrypt(password, process.env.AES_KEY).toString();
-};
-
-function decryptedPassword(decryptPassword) {
-    return CryptoJS.AES.decrypt(decryptPassword, process.env.AES_KEY).toString(CryptoJS.enc.Utf8);
-}
